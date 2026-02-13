@@ -1,0 +1,63 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: incident-postgres
+    environment:
+      POSTGRES_DB: incidentdb
+      POSTGRES_USER: incident
+      POSTGRES_PASSWORD: incidentpassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - incident-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U incident -d incidentdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  go-api:
+    build:
+      context: ./go-api
+      dockerfile: Dockerfile
+    container_name: incident-go-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgres://incident:incidentpassword@postgres:5432/incidentdb?sslmode=disable
+      - ML_SERVICE_URL=http://python-ml:8000
+      - ALERT_WEBHOOK_URL=
+    ports:
+      - "8080:8080"
+
+  python-ml:
+    build:
+      context: ./python-ml
+      dockerfile: Dockerfile
+    container_name: incident-python-ml
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://incident:incidentpassword@postgres:5432/incidentdb
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: incident-frontend
+    depends_on:
+      - go-api
+      - python-ml
+    environment:
+      - VITE_API_BASE=http://go-api:8080
+    ports:
+      - "5173:80"
+
+volumes:
+  incident-postgres-data:
