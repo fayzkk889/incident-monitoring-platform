@@ -47,6 +47,20 @@ function App() {
     }
   }
 
+  const resolveIncident = async (incidentId) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/incidents/${incidentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'resolved' })
+      })
+      if (!res.ok) throw new Error('Failed to resolve incident')
+      fetchIncidents()
+    } catch (err) {
+      console.error('Failed to resolve incident:', err)
+    }
+  }
+
   useEffect(() => {
     fetchHealth()
     fetchIncidents()
@@ -132,7 +146,7 @@ function App() {
                 </div>
                 <div className="incident-description">{incident.description}</div>
                 {incident.status === 'open' && (
-                  <div style={{ marginTop: '8px' }}>
+                  <div style={{ marginTop: '8px', display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <span style={{ 
                       padding: '4px 8px', 
                       background: '#fee2e2', 
@@ -143,6 +157,18 @@ function App() {
                     }}>
                       OPEN
                     </span>
+                    <button 
+                      onClick={() => resolveIncident(incident.id)}
+                      style={{ 
+                        fontSize: '11px', 
+                        padding: '4px 8px', 
+                        background: '#dcfce7', 
+                        color: '#166534', 
+                        border: '1px solid #bbf7d0' 
+                      }}
+                    >
+                      Resolve
+                    </button>
                   </div>
                 )}
                 {incident.summary && (

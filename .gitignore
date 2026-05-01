@@ -3,7 +3,6 @@
 .env.local
 
 # Go
-go-api/go.sum
 *.exe
 *.exe~
 *.dll

@@ -45,6 +45,7 @@ func main() {
 	e.POST("/api/logs", handler.IngestLogs)
 	e.GET("/api/health", handler.Health)
 	e.GET("/api/incidents", handler.ListIncidents)
+	e.PATCH("/api/incidents/:incident_id", handler.UpdateIncidentStatus)
 	e.GET("/api/summary/:incident_id", handler.GetIncidentSummary)
 
 	addr := ":8080"

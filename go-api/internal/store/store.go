@@ -36,6 +36,7 @@ type Repository interface {
 	ListIncidents(ctx context.Context, limit int) ([]Incident, error)
 	GetIncident(ctx context.Context, id int64) (*Incident, error)
 	UpdateIncidentSummary(ctx context.Context, id int64, summary, rootCause string) error
+	UpdateIncidentStatus(ctx context.Context, id int64, status string) error
 }
 
 type repository struct {
@@ -67,6 +68,10 @@ CREATE TABLE IF NOT EXISTS incidents (
     root_cause TEXT,
     resolved_at TIMESTAMPTZ
 );
+
+CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp);
+CREATE INDEX IF NOT EXISTS idx_logs_service ON logs(service);
+CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status);
 `)
 	return err
 }
@@ -82,8 +87,14 @@ func (r *repository) InsertLogs(ctx context.Context, logs []LogEntry) error {
 	}
 	br := r.pool.SendBatch(ctx, batch)
 	defer br.Close()
-	_, err := br.Exec()
-	return err
+
+	for i := 0; i < len(logs); i++ {
+		_, err := br.Exec()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *repository) ListRecentLogs(ctx context.Context, limit int) ([]LogEntry, error) {
@@ -179,6 +190,25 @@ SET summary = $2,
     root_cause = $3
 WHERE id = $1
 `, id, summary, rootCause)
+	return err
+}
+
+func (r *repository) UpdateIncidentStatus(ctx context.Context, id int64, status string) error {
+	var err error
+	if status == "resolved" {
+		_, err = r.pool.Exec(ctx, `
+UPDATE incidents
+SET status = $2,
+    resolved_at = NOW()
+WHERE id = $1
+`, id, status)
+	} else {
+		_, err = r.pool.Exec(ctx, `
+UPDATE incidents
+SET status = $2
+WHERE id = $1
+`, id, status)
+	}
 	return err
 }
 

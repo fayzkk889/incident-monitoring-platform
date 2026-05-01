@@ -1,3 +1,4 @@
+import asyncio
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
@@ -25,11 +26,32 @@ ALERT_WEBHOOK_URL = os.getenv("ALERT_WEBHOOK_URL", "")
 engine: Optional[Engine] = None
 
 
+async def periodic_anomaly_detection():
+    """Background task to run anomaly detection every 5 minutes."""
+    print("Starting periodic anomaly detection task...")
+    while True:
+        try:
+            print(f"Running scheduled anomaly detection at {datetime.now()}")
+            await detect_anomalies_endpoint()
+        except Exception as e:
+            print(f"Error in periodic anomaly detection: {e}")
+        
+        await asyncio.sleep(300)  # Sleep for 5 minutes
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global engine
     engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+    # Start the background task
+    task = asyncio.create_task(periodic_anomaly_detection())
     yield
+    # Cleanup
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
     if engine:
         engine.dispose()
 
@@ -200,6 +222,7 @@ async def detect_anomalies_endpoint():
         return {"anomalies_detected": 0, "message": "No anomalies detected"}
 
     created_incidents = []
+    alerts_to_send = []
     with engine.begin() as conn:
         for anomaly in anomalies:
             severity = anomaly.get("severity", "medium")
@@ -219,9 +242,11 @@ async def detect_anomalies_endpoint():
             )
             incident_id = result.scalar()
             created_incidents.append(incident_id)
+            alerts_to_send.append((incident_id, severity, description))
             
-            # Send Slack alert for each incident
-            await send_slack_alert(incident_id, severity, description)
+    # Send Slack alerts after transaction is committed
+    for incident_id, severity, description in alerts_to_send:
+        await send_slack_alert(incident_id, severity, description)
 
     return {
         "anomalies_detected": len(anomalies),

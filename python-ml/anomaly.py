@@ -29,7 +29,7 @@ def detect_anomalies(logs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if isinstance(timestamp, str):
             try:
                 timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-            except:
+            except (ValueError, TypeError):
                 continue
         if not isinstance(timestamp, datetime):
             continue

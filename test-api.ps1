@@ -1,14 +1,17 @@
 # PowerShell Test Script for Incident Monitoring Platform
 # Usage: .\test-api.ps1
+# Compatible with PowerShell 5.1+
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 
 $GO_API = "http://localhost:8080"
 $ML_API = "http://localhost:8000"
 
-Write-Host "`n========================================" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Testing Incident Monitoring Platform" -ForegroundColor Cyan
-Write-Host "========================================`n" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host ""
 
 # Function to make API calls with error handling
 function Invoke-ApiCall {
@@ -18,48 +21,44 @@ function Invoke-ApiCall {
         [object]$Body = $null,
         [string]$Description = ""
     )
-    
+
     Write-Host "Testing: $Description" -ForegroundColor Yellow
     Write-Host "  $Method $Uri" -ForegroundColor Gray
-    
+
     try {
         $params = @{
             Uri = $Uri
             Method = $Method
             ContentType = "application/json"
-            ErrorAction = "Stop"
+            UseBasicParsing = $true
         }
-        
+
         if ($Body) {
             $params.Body = ($Body | ConvertTo-Json -Depth 10)
         }
-        
+
         $response = Invoke-RestMethod @params
-        Write-Host "  ✓ Success" -ForegroundColor Green
+        Write-Host "  Success" -ForegroundColor Green
         $response | ConvertTo-Json -Depth 5 | Write-Host -ForegroundColor DarkGray
+        Write-Host ""
         return $response
     }
     catch {
-        Write-Host "  ✗ Failed: $($_.Exception.Message)" -ForegroundColor Red
-        if ($_.Exception.Response) {
-            $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
-            $responseBody = $reader.ReadToEnd()
-            Write-Host "  Response: $responseBody" -ForegroundColor Red
-        }
+        Write-Host "  Failed: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host ""
         return $null
     }
-    Write-Host ""
 }
 
 # Test 1: Health Checks
-Write-Host "`n--- Step 1: Health Checks ---" -ForegroundColor Magenta
+Write-Host "--- Step 1: Health Checks ---" -ForegroundColor Magenta
 Invoke-ApiCall -Uri "$GO_API/api/health" -Description "Go API Health Check"
 Start-Sleep -Seconds 1
 Invoke-ApiCall -Uri "$ML_API/health" -Description "Python ML API Health Check"
 Start-Sleep -Seconds 1
 
 # Test 2: Send Test Logs
-Write-Host "`n--- Step 2: Ingest Test Logs ---" -ForegroundColor Magenta
+Write-Host "--- Step 2: Ingest Test Logs ---" -ForegroundColor Magenta
 $testLogs = @{
     logs = @(
         @{
@@ -116,11 +115,20 @@ $logResponse = Invoke-ApiCall -Uri "$GO_API/api/logs" -Method POST -Body $testLo
 Start-Sleep -Seconds 2
 
 # Test 3: Send More Logs for Anomaly Detection
-Write-Host "`n--- Step 3: Send Additional Logs for Anomaly Detection ---" -ForegroundColor Magenta
+Write-Host "--- Step 3: Send Additional Logs for Anomaly Detection ---" -ForegroundColor Magenta
+$services = @("api-server", "auth-service", "payment-service")
+
 for ($i = 1; $i -le 15; $i++) {
-    $level = if ($i % 4 -eq 0) { "error" } elseif ($i % 3 -eq 0) { "warn" } else { "info" }
-    $service = @("api-server", "auth-service", "payment-service")[($i - 1) % 3]
-    
+    if ($i % 4 -eq 0) {
+        $level = "error"
+    } elseif ($i % 3 -eq 0) {
+        $level = "warn"
+    } else {
+        $level = "info"
+    }
+
+    $service = $services[($i - 1) % 3]
+
     $singleLog = @{
         logs = @(
             @{
@@ -134,9 +142,9 @@ for ($i = 1; $i -le 15; $i++) {
             }
         )
     }
-    
+
     try {
-        Invoke-RestMethod -Uri "$GO_API/api/logs" -Method POST -Body ($singleLog | ConvertTo-Json -Depth 10) -ContentType "application/json" | Out-Null
+        Invoke-RestMethod -Uri "$GO_API/api/logs" -Method POST -Body ($singleLog | ConvertTo-Json -Depth 10) -ContentType "application/json" -UseBasicParsing | Out-Null
         Write-Host "  Sent log $i/15" -ForegroundColor DarkGray
     }
     catch {
@@ -144,46 +152,59 @@ for ($i = 1; $i -le 15; $i++) {
     }
     Start-Sleep -Milliseconds 200
 }
-Write-Host "  ✓ Sent 15 additional logs" -ForegroundColor Green
+Write-Host "  Sent 15 additional logs" -ForegroundColor Green
+Write-Host ""
 Start-Sleep -Seconds 2
 
 # Test 4: List Incidents
-Write-Host "`n--- Step 4: List Incidents ---" -ForegroundColor Magenta
+Write-Host "--- Step 4: List Incidents ---" -ForegroundColor Magenta
 $incidents = Invoke-ApiCall -Uri "$GO_API/api/incidents" -Description "List All Incidents"
 Start-Sleep -Seconds 1
 
 # Test 5: Detect Anomalies
-Write-Host "`n--- Step 5: Detect Anomalies ---" -ForegroundColor Magenta
+Write-Host "--- Step 5: Detect Anomalies ---" -ForegroundColor Magenta
 $anomalyResponse = Invoke-ApiCall -Uri "$ML_API/detect_anomalies" -Method POST -Description "Trigger Anomaly Detection"
 Start-Sleep -Seconds 2
 
 # Test 6: List Incidents Again (after anomaly detection)
-Write-Host "`n--- Step 6: List Incidents (After Anomaly Detection) ---" -ForegroundColor Magenta
+Write-Host "--- Step 6: List Incidents (After Anomaly Detection) ---" -ForegroundColor Magenta
 $incidentsAfter = Invoke-ApiCall -Uri "$GO_API/api/incidents" -Description "List Incidents After Detection"
 Start-Sleep -Seconds 1
 
 # Test 7: Get Incident Summary (if incidents exist)
 if ($incidentsAfter -and $incidentsAfter.Count -gt 0) {
     $firstIncidentId = $incidentsAfter[0].id
-    Write-Host "`n--- Step 7: Get AI Summary for Incident #$firstIncidentId ---" -ForegroundColor Magenta
+    Write-Host "--- Step 7: Get AI Summary for Incident #$firstIncidentId ---" -ForegroundColor Magenta
     Write-Host "  Note: This may take 10-30 seconds as it calls OpenAI API..." -ForegroundColor Yellow
     $summary = Invoke-ApiCall -Uri "$GO_API/api/summary/$firstIncidentId" -Description "Get AI-Generated Summary"
     Start-Sleep -Seconds 1
 }
 
+# Test 8: Test Incident Resolution
+if ($incidentsAfter -and $incidentsAfter.Count -gt 0) {
+    $lastIncidentId = $incidentsAfter[$incidentsAfter.Count - 1].id
+    Write-Host "--- Step 8: Resolve Incident #$lastIncidentId ---" -ForegroundColor Magenta
+    $resolveBody = @{ status = "resolved" }
+    $resolveResult = Invoke-ApiCall -Uri "$GO_API/api/incidents/$lastIncidentId" -Method PATCH -Body $resolveBody -Description "Resolve an Incident"
+    Start-Sleep -Seconds 1
+}
+
 # Summary
-Write-Host "`n========================================" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Test Summary" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "✓ Health checks completed" -ForegroundColor Green
-Write-Host "✓ Logs ingested successfully" -ForegroundColor Green
-Write-Host "✓ Anomaly detection triggered" -ForegroundColor Green
-Write-Host "✓ Incidents retrieved" -ForegroundColor Green
+Write-Host "  Health checks completed" -ForegroundColor Green
+Write-Host "  Logs ingested successfully" -ForegroundColor Green
+Write-Host "  Anomaly detection triggered" -ForegroundColor Green
+Write-Host "  Incidents retrieved" -ForegroundColor Green
 if ($incidentsAfter -and $incidentsAfter.Count -gt 0) {
-    Write-Host "✓ AI summary generated" -ForegroundColor Green
+    Write-Host "  AI summary generated" -ForegroundColor Green
+    Write-Host "  Incident resolution tested" -ForegroundColor Green
 }
-Write-Host "`nNext Steps:" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "Next Steps:" -ForegroundColor Yellow
 Write-Host "  1. Open the dashboard: http://localhost:5173" -ForegroundColor White
 Write-Host "  2. View incidents and logs in the UI" -ForegroundColor White
 Write-Host "  3. Click 'Generate AI Analysis' on any incident" -ForegroundColor White
-Write-Host "`n"
+Write-Host "  4. Click 'Resolve' to close an incident" -ForegroundColor White
+Write-Host ""

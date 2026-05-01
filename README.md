@@ -83,7 +83,7 @@ Make sure you have:
 
 3. **Start everything:**
    ```powershell
-   docker compose up --build
+    
    ```
    
    ⏳ **Wait 30-60 seconds** for all services to start. You'll see:

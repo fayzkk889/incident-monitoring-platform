@@ -52,7 +52,32 @@ func (h *Handler) IngestLogs(c echo.Context) error {
 
 	var logs []store.LogEntry
 	now := time.Now().UTC()
-	for _, l := range req.Logs {
+
+	validLevels := map[string]bool{
+		"debug":    true,
+		"info":     true,
+		"warn":     true,
+		"warning":  true,
+		"error":    true,
+		"critical": true,
+		"fatal":    true,
+		"panic":    true,
+	}
+
+	for i, l := range req.Logs {
+		if l.Service == "" {
+			return c.JSON(http.StatusBadRequest, echo.Map{"error": fmt.Sprintf("log %d: service is required", i)})
+		}
+		if l.Message == "" {
+			return c.JSON(http.StatusBadRequest, echo.Map{"error": fmt.Sprintf("log %d: message is required", i)})
+		}
+		if len(l.Message) > 10000 {
+			return c.JSON(http.StatusBadRequest, echo.Map{"error": fmt.Sprintf("log %d: message exceeds 10000 characters", i)})
+		}
+		if !validLevels[l.Level] {
+			return c.JSON(http.StatusBadRequest, echo.Map{"error": fmt.Sprintf("log %d: invalid level '%s'", i, l.Level)})
+		}
+
 		ts := now
 		if l.Timestamp != nil {
 			ts = *l.Timestamp
@@ -97,6 +122,28 @@ func (h *Handler) ListIncidents(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to list incidents"})
 	}
 	return c.JSON(http.StatusOK, incidents)
+}
+
+func (h *Handler) UpdateIncidentStatus(c echo.Context) error {
+	idStr := c.Param("incident_id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid incident id"})
+	}
+
+	var req struct {
+		Status string `json:"status"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid payload"})
+	}
+
+	ctx := c.Request().Context()
+	if err := h.repo.UpdateIncidentStatus(ctx, id, req.Status); err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": "failed to update status"})
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{"status": "updated"})
 }
 
 func (h *Handler) GetIncidentSummary(c echo.Context) error {

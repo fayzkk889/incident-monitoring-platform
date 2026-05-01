@@ -1,7 +1,7 @@
 import json
 from typing import Any, Dict, List
 
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 
 async def summarize_incident(
@@ -17,7 +17,7 @@ async def summarize_incident(
             "Please configure OPENAI_API_KEY environment variable",
         )
 
-    client = OpenAI(api_key=api_key)
+    client = AsyncOpenAI(api_key=api_key)
 
     error_logs = [log for log in recent_logs if log.get("level", "").lower() in {"error", "critical", "fatal", "panic"}]
     relevant_logs = error_logs[:20] if error_logs else recent_logs[:20]
@@ -44,7 +44,7 @@ Respond in JSON format with "summary" and "root_cause" fields.
 """
 
     try:
-        response = client.chat.completions.create(
+        response = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {
